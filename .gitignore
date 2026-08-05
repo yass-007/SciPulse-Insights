@@ -1,0 +1,56 @@
+# =============================================================================
+#  SciPulse — .gitignore
+# =============================================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# --- Data (ne pas versionner les dumps volumineux) ---
+data/arxiv-raw/*.json
+data/arxiv-raw/*.gz
+data/hn-raw/
+*.csv
+*.parquet
+!data/.gitkeep
+
+# --- Docker volumes ---
+es-data/
+pg-data/
+minio-data/
+
+# --- Airflow ---
+airflow/logs/
+airflow/plugins/__pycache__/
+
+# --- dbt ---
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# --- Great Expectations ---
+great_expectations/uncommitted/
+great_expectations/checkpoints/
+great_expectations/plugins/
+
+# --- IDE ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Env ---
+.env
+.env.local
+
