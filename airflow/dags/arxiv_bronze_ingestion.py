@@ -1,5 +1,6 @@
 from datetime import datetime
 from pathlib import Path
+import zipfile
 
 import boto3
 import requests
@@ -38,10 +39,7 @@ ARXIV_BUCKET = "arxiv-raw"
 
 def download_arxiv_dump():
     """
-    Download the raw ArXiv metadata dump from Kaggle.
-
-    The file is downloaded as-is.
-    No data transformation is performed.
+    Download the raw ArXiv metadata archive from Kaggle.
     """
 
     DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -63,19 +61,50 @@ def download_arxiv_dump():
                     file.write(chunk)
 
     print(
-        f"ArXiv dump downloaded successfully: {ZIP_PATH}"
+        f"ArXiv archive downloaded successfully: {ZIP_PATH}"
     )
 
 
 # =============================================================================
-# Task 2 — Upload raw JSON to MinIO
+# Task 2 — Extract raw JSON
+# =============================================================================
+
+def extract_arxiv_dump():
+    """
+    Extract the original ArXiv JSON file from the downloaded archive.
+
+    No data transformation is performed.
+    """
+
+    if not ZIP_PATH.exists():
+        raise FileNotFoundError(
+            f"ArXiv ZIP file not found: {ZIP_PATH}"
+        )
+
+    with zipfile.ZipFile(ZIP_PATH, "r") as archive:
+
+        archive.extract(
+            "arxiv-metadata-oai-snapshot.json",
+            DOWNLOAD_DIR,
+        )
+
+    if not ARXIV_JSON_PATH.exists():
+        raise FileNotFoundError(
+            f"ArXiv JSON extraction failed: {ARXIV_JSON_PATH}"
+        )
+
+    print(
+        f"ArXiv raw JSON extracted successfully: {ARXIV_JSON_PATH}"
+    )
+
+
+# =============================================================================
+# Task 3 — Upload raw JSON to MinIO
 # =============================================================================
 
 def upload_arxiv_to_minio():
     """
-    Upload the raw ArXiv JSON file to MinIO Bronze layer.
-
-    No transformation is performed.
+    Upload the original ArXiv JSON file to the Bronze MinIO bucket.
     """
 
     if not ARXIV_JSON_PATH.exists():
@@ -103,7 +132,7 @@ def upload_arxiv_to_minio():
 
 
 # =============================================================================
-# DAG definition
+# DAG
 # =============================================================================
 
 with DAG(
@@ -127,10 +156,15 @@ with DAG(
         python_callable=download_arxiv_dump,
     )
 
+    extract_arxiv = PythonOperator(
+        task_id="extract_arxiv_dump",
+        python_callable=extract_arxiv_dump,
+    )
+
     upload_arxiv = PythonOperator(
         task_id="upload_arxiv_to_minio",
         python_callable=upload_arxiv_to_minio,
     )
 
-    download_arxiv >> upload_arxiv
+    download_arxiv >> extract_arxiv >> upload_arxiv
     
