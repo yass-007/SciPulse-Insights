@@ -21,7 +21,7 @@ HN_ITEM_URL = (
     "https://hacker-news.firebaseio.com/v0/item/{item_id}.json"
 )
 
-DATA_DIR = Path("/opt/airflow/data/hn")
+DATA_DIR = Path("/opt/airflow/data/bronze/hn")
 
 HN_BATCH_SIZE = 50
 

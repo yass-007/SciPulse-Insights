@@ -18,7 +18,7 @@ ARXIV_URL = (
     "Cornell-University/arxiv"
 )
 
-DOWNLOAD_DIR = Path("/opt/airflow/data/arxiv")
+DOWNLOAD_DIR = Path("/opt/airflow/data/bronze/arxiv")
 
 ZIP_PATH = DOWNLOAD_DIR / "arxiv-metadata.zip"
 
