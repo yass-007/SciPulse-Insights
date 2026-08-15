@@ -1,0 +1,46 @@
+{
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "timestamp": {
+        "type": "date"
+      },
+      "source": {
+        "type": "keyword"
+      },
+      "layer": {
+        "type": "keyword"
+      },
+      "object_count": {
+        "type": "integer"
+      },
+      "size_bytes": {
+        "type": "long"
+      },
+      "size_mb": {
+        "type": "double"
+      },
+      "size_gb": {
+        "type": "double"
+      },
+      "ge_evaluated": {
+        "type": "integer"
+      },
+      "ge_successful": {
+        "type": "integer"
+      },
+      "ge_failed": {
+        "type": "integer"
+      },
+      "ge_success_rate": {
+        "type": "double"
+      },
+      "ge_error_rate": {
+        "type": "double"
+      },
+      "freshness_timestamp": {
+        "type": "date"
+      }
+    }
+  }
+}
