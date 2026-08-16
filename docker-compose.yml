@@ -293,6 +293,40 @@ services:
     restart: unless-stopped
 
 
+  # ===========================================================================
+  # SPARK — PySpark processing for Module 2
+  # ===========================================================================
+
+  spark:
+    image: apache/spark:3.5.1
+    container_name: scipulse-spark
+
+    command:
+      - /bin/bash
+      - -c
+      - |
+        tail -f /dev/null
+
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+
+      PYSPARK_PYTHON: python3
+      PYSPARK_DRIVER_PYTHON: python3
+
+    volumes:
+      - ./src:/opt/spark/work-dir/src
+      - ./data:/opt/spark/work-dir/data
+
+    depends_on:
+      - minio
+
+    networks:
+      - scipulse
+
+    restart: unless-stopped
+
+
 # =============================================================================
 # VOLUMES
 # =============================================================================

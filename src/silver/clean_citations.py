@@ -218,11 +218,13 @@ def clean_citations():
     # Normalize publication date
     # -------------------------------------------------------------------------
 
-    df["publication_date"] = pd.to_datetime(
+    df["publication_date"] = (
+    pd.to_datetime(
         df["publication_date"],
         errors="coerce",
     )
-
+    .dt.strftime("%Y-%m-%d")
+)
     # -------------------------------------------------------------------------
     # Normalize numeric citation fields
     # -------------------------------------------------------------------------

@@ -131,11 +131,14 @@ def clean_hn(df):
     # Hacker News API stores time as Unix timestamp.
     # -------------------------------------------------------------------------
 
-    df["time"] = pd.to_datetime(
+    df["time"] = (
+    pd.to_datetime(
         df["time"],
         unit="s",
         errors="coerce",
         utc=True,
+    )
+    .dt.strftime("%Y-%m-%dT%H:%M:%SZ")
     )
 
     # -------------------------------------------------------------------------

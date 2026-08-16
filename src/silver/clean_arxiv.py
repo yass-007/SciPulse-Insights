@@ -125,11 +125,13 @@ def clean_chunk(df):
     # -------------------------------------------------------------------------
 
     if "update_date" in df.columns:
-        df["update_date"] = pd.to_datetime(
+     df["update_date"] = (
+        pd.to_datetime(
             df["update_date"],
-            format="%Y-%m-%d",
             errors="coerce",
         )
+        .dt.strftime("%Y-%m-%d")
+    )
 
     # -------------------------------------------------------------------------
     # Remove records without ID
