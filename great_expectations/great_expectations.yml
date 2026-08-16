@@ -54,6 +54,12 @@ fluent_datasources:
       hn_sample:
         type: dataframe
         batch_metadata: {}
+  citations_pandas_source:
+    type: pandas
+    assets:
+      citations_sample:
+        type: dataframe
+        batch_metadata: {}
 notebooks:
 anonymous_usage_statistics:
   data_context_id: 1ea9a595-ce75-4336-bf91-fe9a7a4e8038
