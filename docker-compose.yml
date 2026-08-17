@@ -299,7 +299,9 @@ services:
 
   spark:
     image: apache/spark:3.5.1
-    container_name: scipulse-spark
+    container_name: scipulse-spark 
+    ports:
+      - "4040:4040"
 
     command:
       - /bin/bash

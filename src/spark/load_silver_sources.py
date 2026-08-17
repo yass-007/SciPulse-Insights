@@ -196,7 +196,13 @@ def main():
             f"Citations: {citations_df.count()} rows"
         )
 
+    
     finally:
+
+        input(
+    "\nSpark UI available on port 4040. "
+    "Press ENTER to stop Spark..."
+      )
 
         spark.stop()
 
