@@ -7,6 +7,7 @@ the full ~5 GB dataset into memory.
 Transformations:
 - keep useful fields
 - normalize missing values
+- extract original publication date from versions[0].created
 - normalize update_date
 - encode categories as arrays
 - remove duplicate IDs
@@ -37,6 +38,29 @@ CHUNK_SIZE = 50_000
 
 
 # =============================================================================
+# Helpers
+# =============================================================================
+
+def extract_first_publication_date(versions):
+    """
+    Extract the initial ArXiv submission date.
+
+    ArXiv stores submission history in the "versions" field.
+    The first version corresponds to the initial publication/submission.
+    """
+
+    if not isinstance(versions, list) or not versions:
+        return None
+
+    first_version = versions[0]
+
+    if not isinstance(first_version, dict):
+        return None
+
+    return first_version.get("created")
+
+
+# =============================================================================
 # Cleaning
 # =============================================================================
 
@@ -51,6 +75,7 @@ def clean_chunk(df):
         "abstract",
         "authors",
         "categories",
+        "versions",
         "update_date",
         "doi",
         "journal-ref",
@@ -102,7 +127,8 @@ def clean_chunk(df):
             )
 
     # -------------------------------------------------------------------------
-    # Categories:
+    # Categories
+    #
     # "cs.AI cs.LG" -> ["cs.AI", "cs.LG"]
     # -------------------------------------------------------------------------
 
@@ -121,24 +147,54 @@ def clean_chunk(df):
         )
 
     # -------------------------------------------------------------------------
-    # Normalize date
+    # Extract original publication date
+    #
+    # versions[0]["created"] corresponds to the initial ArXiv submission.
+    # -------------------------------------------------------------------------
+
+    if "versions" in df.columns:
+
+        df["published_date"] = (
+            df["versions"]
+            .apply(extract_first_publication_date)
+        )
+
+        df["published_date"] = (
+            pd.to_datetime(
+                df["published_date"],
+                errors="coerce",
+                utc=True,
+            )
+            .dt.strftime("%Y-%m-%d")
+        )
+
+        # Raw nested structure no longer needed in Silver
+        df = df.drop(
+            columns=["versions"]
+        )
+
+    # -------------------------------------------------------------------------
+    # Normalize update date
     # -------------------------------------------------------------------------
 
     if "update_date" in df.columns:
-     df["update_date"] = (
-        pd.to_datetime(
-            df["update_date"],
-            errors="coerce",
+        df["update_date"] = (
+            pd.to_datetime(
+                df["update_date"],
+                errors="coerce",
+            )
+            .dt.strftime("%Y-%m-%d")
         )
-        .dt.strftime("%Y-%m-%d")
-    )
 
     # -------------------------------------------------------------------------
     # Remove records without ID
     # -------------------------------------------------------------------------
 
     if "id" in df.columns:
-        df = df.dropna(subset=["id"])
+
+        df = df.dropna(
+            subset=["id"]
+        )
 
         df = df[
             df["id"]
@@ -148,7 +204,7 @@ def clean_chunk(df):
         ]
 
     # -------------------------------------------------------------------------
-    # Remove duplicates inside the current chunk
+    # Remove duplicates inside current chunk
     # -------------------------------------------------------------------------
 
     df = df.drop_duplicates(
@@ -156,7 +212,9 @@ def clean_chunk(df):
         keep="last",
     )
 
-    return df.reset_index(drop=True)
+    return df.reset_index(
+        drop=True
+    )
 
 
 # =============================================================================
@@ -204,9 +262,13 @@ def process_full_dataset():
                 chunk_number += 1
                 total_input_rows += len(records)
 
-                df = pd.DataFrame(records)
+                df = pd.DataFrame(
+                    records
+                )
 
-                clean_df = clean_chunk(df)
+                clean_df = clean_chunk(
+                    df
+                )
 
                 output_file = (
                     ARXIV_SILVER_DIR
@@ -219,7 +281,9 @@ def process_full_dataset():
                     compression="snappy",
                 )
 
-                total_output_rows += len(clean_df)
+                total_output_rows += len(
+                    clean_df
+                )
 
                 print(
                     f"Chunk {chunk_number} written: "
@@ -235,11 +299,17 @@ def process_full_dataset():
         if records:
 
             chunk_number += 1
-            total_input_rows += len(records)
+            total_input_rows += len(
+                records
+            )
 
-            df = pd.DataFrame(records)
+            df = pd.DataFrame(
+                records
+            )
 
-            clean_df = clean_chunk(df)
+            clean_df = clean_chunk(
+                df
+            )
 
             output_file = (
                 ARXIV_SILVER_DIR
@@ -252,33 +322,44 @@ def process_full_dataset():
                 compression="snappy",
             )
 
-            total_output_rows += len(clean_df)
+            total_output_rows += len(
+                clean_df
+            )
 
             print(
                 f"Chunk {chunk_number} written: "
                 f"{len(clean_df)} rows"
             )
 
-    print("\n" + "=" * 70)
+    print()
+    print("=" * 70)
     print("ARXIV FULL SILVER PROCESSING COMPLETE")
     print("=" * 70)
 
     print(
-        f"Input rows processed: {total_input_rows}"
+        f"Input rows processed: "
+        f"{total_input_rows}"
     )
 
     print(
-        f"Silver rows written: {total_output_rows}"
+        f"Silver rows written: "
+        f"{total_output_rows}"
     )
 
     print(
-        f"Parquet files generated: {chunk_number}"
+        f"Parquet files generated: "
+        f"{chunk_number}"
     )
 
     print(
-        f"Output directory: {ARXIV_SILVER_DIR}"
+        f"Output directory: "
+        f"{ARXIV_SILVER_DIR}"
     )
 
+
+# =============================================================================
+# Main
+# =============================================================================
 
 if __name__ == "__main__":
     process_full_dataset()
