@@ -28,6 +28,9 @@ x-airflow-common: &airflow-common
     - ./great_expectations:/opt/airflow/great_expectations
     - ./requirements.txt:/opt/airflow/requirements.txt:ro
 
+    # Allow Airflow to trigger the existing Spark container.
+    - /var/run/docker.sock:/var/run/docker.sock
+
   depends_on:
     postgres:
       condition: service_healthy
