@@ -299,6 +299,7 @@ services:
 
   spark:
     image: apache/spark:3.5.1
+    mem_limit: 8g
     container_name: scipulse-spark 
     ports:
       - "4040:4040"
@@ -314,6 +315,7 @@ services:
     environment:
       AWS_ACCESS_KEY_ID: minioadmin
       AWS_SECRET_ACCESS_KEY: minioadmin
+
 
       PYTHONPATH: /tmp/python-packages
       PYSPARK_PYTHON: python3
