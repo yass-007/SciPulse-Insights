@@ -28,7 +28,7 @@ CITATIONS_DIR = Path(
     "/opt/airflow/data/bronze/citations"
 )
 
-SAMPLE_SIZE = 10000
+SAMPLE_SIZE = 2000
 
 GX_CONTEXT_DIR = "/opt/airflow/great_expectations"
 
@@ -240,12 +240,6 @@ def run_citations_expectations():
                 "action": {
                     "class_name": "StoreValidationResultAction",
                     "target_store_name": "validations_store",
-                },
-            },
-            {
-                "name": "update_data_docs",
-                "action": {
-                    "class_name": "UpdateDataDocsAction",
                 },
             },
         ],
