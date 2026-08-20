@@ -67,14 +67,12 @@ def prepare_arxiv(df):
             ).alias("arxiv_id"),
 
             "title",
+            "categories",
 
             F.to_date(
                 F.col("published_date"),
                 "yyyy-MM-dd",
             ).alias("published_date"),
-        )
-        .filter(
-            F.col("arxiv_id").isNotNull()
         )
     )
 # Citation preparation

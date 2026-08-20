@@ -122,6 +122,7 @@ def main():
             .select(
                 "arxiv_id",
                 "title",
+                "categories",
                 "published_date",
                 "cited_by_count",
                 "hn_score_total",
