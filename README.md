@@ -122,7 +122,7 @@ Le projet suit une architecture **Medallion**.
 |---|---|
 | Python | Ingestion, nettoyage et traitements |
 | Apache Airflow | Orchestration des pipelines |
-| Apache Spark | Traitements distribués |
+| Apache Spark | Traitements de données et calculs analytiques  |
 | Spark Structured Streaming | Traitement incrémental de Hacker News |
 | MinIO | Stockage objet compatible S3 |
 | Great Expectations | Contrôle qualité des données |
@@ -164,7 +164,16 @@ src/silver/clean_arxiv.py
 
 ## OpenAlex
 
-OpenAlex est utilisé pour enrichir les publications avec des informations relatives aux **citations scientifiques**.
+**OpenAlex** a été retenu comme source d'enrichissement afin de compléter les publications ArXiv avec des informations relatives aux citations scientifiques.
+Ce choix repose notamment sur :
+
+- son accès gratuit adapté à un usage académique ;
+- la disponibilité d'une API permettant l'ingestion automatisée des données ;
+- la présence de métriques de citations exploitables pour mesurer l'impact académique ;
+- la possibilité de rapprocher les publications avec ArXiv grâce aux identifiants scientifiques disponibles ;
+- son intégration relativement simple dans une architecture Data Engineering basée sur Python, MinIO et Spark.
+
+OpenAlex apporte ainsi le **signal académique** utilisé dans le calcul du score d'impact composite, tandis que Hacker News apporte un signal de visibilité communautaire.
 
 Principaux composants :
 
@@ -172,9 +181,6 @@ Principaux composants :
 src/citations/ingest_openalex.py
 airflow/dags/citations_silver_pipeline.py
 src/silver/clean_citations.py
-```
-
-Ces données sont ensuite rapprochées des publications ArXiv lors des traitements Spark.
 
 ---
 
@@ -331,7 +337,7 @@ Cette représentation permet d'identifier les termes caractéristiques des docum
 
 ## 5. Gold — score d'impact
 
-La couche **Gold** contient le dataset final enrichi.
+La couche **Gold** contient le dataset final enrichi destiné à l'analyse et à la visualisation.
 
 Le calcul principal est réalisé dans :
 
@@ -339,20 +345,120 @@ Le calcul principal est réalisé dans :
 src/spark/impact_score.py
 ```
 
-Le score d'impact combine plusieurs dimensions normalisées :
+L'objectif est de construire un indicateur synthétique permettant d'évaluer l'impact d'une publication selon trois dimensions complémentaires :
+
+- son **impact académique**, mesuré à partir des citations OpenAlex ;
+- sa **visibilité communautaire**, mesurée à partir de Hacker News ;
+- sa **récence**, afin de ne pas favoriser uniquement les publications anciennes.
+
+### Signal académique
+
+Le signal académique repose sur le nombre de citations OpenAlex :
 
 ```text
-Signal académique
-citation_signal_norm
-        │
-        ├──────────┐
-        │          │
-Signal HN          │
-hn_signal_norm ────┼──► Impact Score
-        │          │
-Signal de récence  │
-recency_signal_norm
+citation_signal_raw = log(1 + cited_by_count)
 ```
+
+Une transformation logarithmique est appliquée afin de limiter l'influence des publications extrêmement citées et de réduire l'asymétrie de la distribution des citations.
+
+Le signal obtenu est ensuite normalisé entre 0 et 1 par normalisation Min-Max :
+
+```text
+citation_signal_norm =
+(citation_signal_raw - citation_min)
+/
+(citation_max - citation_min)
+```
+
+### Signal Hacker News
+
+Le signal communautaire combine le score Hacker News et le nombre de descendants associés aux publications :
+
+```text
+hn_signal_raw =
+log(1 + hn_score_total + hn_descendants_total)
+```
+
+L'utilisation du logarithme permet également de limiter l'influence des publications ayant une activité Hacker News exceptionnellement élevée.
+
+Le signal est ensuite normalisé entre 0 et 1 :
+
+```text
+hn_signal_norm =
+(hn_signal_raw - hn_min)
+/
+(hn_max - hn_min)
+```
+
+Lorsqu'une publication ne possède aucune correspondance Hacker News, son signal communautaire est fixé à `0`.
+
+### Signal de récence
+
+L'âge d'une publication est calculé en jours :
+
+```text
+age_days = current_date - published_date
+```
+
+Le signal de récence brut est ensuite défini par :
+
+```text
+recency_signal_raw =
+1 / (1 + age_days / 365)
+```
+
+Cette fonction décroît progressivement avec l'âge de la publication.
+
+À titre indicatif :
+
+```text
+Publication récente  → signal proche de 1.0
+1 an                 → signal proche de 0.5
+4 ans                → signal proche de 0.2
+```
+
+Le signal est ensuite normalisé entre 0 et 1 avec la même méthode Min-Max.
+
+### Formule du score d'impact
+
+Les trois dimensions sont combinées selon la formule suivante :
+
+```text
+Impact Score =
+100 × (
+    0.50 × citation_signal_norm
+  + 0.30 × hn_signal_norm
+  + 0.20 × recency_signal_norm
+)
+```
+
+Le score final est donc exprimé sur une échelle théorique de **0 à 100**.
+
+Les pondérations retenues sont :
+
+| Dimension | Pondération |
+|---|---:|
+| Citations académiques | 50 % |
+| Signal Hacker News | 30 % |
+| Récence | 20 % |
+
+### Justification des pondérations
+
+Les **citations académiques représentent 50 % du score**, car SciPulse vise principalement à mesurer l'impact scientifique d'une publication. Elles constituent donc le signal principal du modèle.
+
+Le **signal Hacker News représente 30 % du score**. Il complète les citations en capturant l'attention qu'une publication reçoit auprès d'une communauté technologique. Cette dimension peut notamment faire ressortir des travaux récents ou très discutés qui n'ont pas encore accumulé un grand nombre de citations académiques.
+
+La **récence représente 20 % du score**. Elle permet de limiter l'avantage structurel des publications anciennes, qui ont naturellement eu davantage de temps pour accumuler des citations. Son poids reste volontairement inférieur aux deux autres dimensions afin qu'une publication récente ne soit pas considérée comme influente uniquement en raison de sa date de publication.
+
+Ces pondérations constituent un choix de modélisation explicite et interprétable. Elles privilégient donc l'impact scientifique tout en intégrant une dimension communautaire et temporelle.
+
+### Périmètre du calcul
+
+Le score est calculé uniquement pour les publications ArXiv disposant d'une correspondance avec les données OpenAlex disponibles dans le projet.
+
+Cette décision évite d'interpréter l'absence d'une publication dans l'échantillon OpenAlex comme l'indication qu'elle possède nécessairement zéro citation.
+
+La correspondance Hacker News reste facultative : une publication sans activité Hacker News conserve un signal communautaire égal à zéro.
 
 Le dataset Gold contient notamment :
 
@@ -369,7 +475,7 @@ recency_signal_norm
 impact_score
 ```
 
-L'objectif est de proposer une mesure multidimensionnelle de l'impact, plutôt que de se limiter au nombre brut de citations.
+Cette approche permet ainsi de produire un indicateur multidimensionnel combinant **impact académique, visibilité communautaire et récence**.
 
 ---
 
@@ -440,6 +546,13 @@ Elasticsearch permet ensuite d'effectuer des recherches et agrégations rapides 
 Kibana constitue la couche de visualisation du projet.
 
 Les dashboards permettent notamment d'explorer :
+
+- les publications présentant les scores d'impact les plus élevés ;
+- la distribution des publications par catégorie scientifique ;
+- l'évolution temporelle des publications ;
+- les volumes de citations ;
+- la relation entre impact académique, récence et visibilité communautaire ;
+- les principaux indicateurs issus de la couche Gold.
 
 Les objets Kibana sont exportés dans :
 
@@ -549,6 +662,18 @@ Le Structured Streaming permet de réduire le délai entre l'arrivée d'un nouve
 
 ---
 
+### Garanties de traitement
+
+Dans le pipeline batch, Airflow orchestre des traitements planifiés et permet de rejouer les tâches en cas d'échec.
+
+Dans le pipeline Structured Streaming, Spark conserve la progression du traitement dans un checkpoint stocké dans MinIO. Ce mécanisme permet au job de retrouver son état après un redémarrage et de suivre les fichiers déjà pris en compte par le stream.
+
+Le mode `append` permet d'ajouter progressivement les résultats des nouveaux micro-batches au dataset Parquet existant.
+
+Ainsi, l'approche streaming réduit la latence de traitement tout en conservant l'état d'avancement du pipeline grâce au mécanisme de checkpoint.
+
+---
+
 ## Validation du streaming
 
 Le fonctionnement de l'extension a été validé en maintenant le job Spark actif puis en ajoutant un nouveau fichier dans `hn-raw/`.
@@ -594,9 +719,9 @@ Lors de l'exécution du pipeline Gold :
 | ArXiv | 3 127 797 lignes |
 | Publications avec citations | 44 022 |
 | Publications associées à Hacker News | 91 |
-| Dataset Gold final | **44 023 lignes** |
+| Dataset Gold final | **44 022 lignes** |
 
-Les **44 023 documents Gold** ont ensuite été écrits dans :
+Les **44 022 documents Gold** ont ensuite été indexés dans Elasticsearch dans l'index :
 
 ```text
 arxiv-papers-enriched
@@ -804,29 +929,9 @@ docker exec scipulse-minio \
 
 # Conclusion
 
-SciPulse Insights met en œuvre une chaîne Data Engineering complète :
-
-```text
-COLLECTER
-    ↓
-STOCKER
-    ↓
-VALIDER
-    ↓
-NETTOYER
-    ↓
-CROISER
-    ↓
-ENRICHIR
-    ↓
-INDEXER
-    ↓
-VISUALISER
-```
-
 L'architecture **Bronze / Silver / Gold** permet de séparer clairement les différentes étapes du cycle de vie des données.
 
-**Apache Airflow** assure l'orchestration, **MinIO** le stockage objet, **Great Expectations** le contrôle qualité et **Apache Spark** les traitements distribués.
+**Apache Airflow** assure l'orchestration, **MinIO** le stockage objet, **Great Expectations** le contrôle qualité et **Apache Spark** les traitements de données et calculs analytiques.
 
 Les données enrichies sont ensuite indexées dans **Elasticsearch** et explorées dans **Kibana**.
 
