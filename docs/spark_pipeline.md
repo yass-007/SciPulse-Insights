@@ -50,7 +50,6 @@ Le plan d'exécution Spark confirme notamment :
 ainsi que la présence d'un `BroadcastExchange`.
 
 ![Plan Spark - Broadcast Hash Join](images/spark_broadcast_join_plan.png)
-![Plan Spark - Broadcast Hash Join](images/spark_broadcast_join_plan_1.png)
 
 *Figure 1 — Plan physique Spark utilisant un Broadcast Hash Join.*
 
@@ -67,6 +66,7 @@ Le plan physique fait apparaître un :
 ainsi que des opérations `Exchange` et `Sort`.
 
 ![Plan Spark - Sort-Merge Join](images/spark_sort_merge_join_plan.png)
+![Plan Spark - Sort-Merge Join](images/spark_sort_merge_join_plan_1.png)
 
 *Figure 2 — Plan physique Spark utilisant un Sort-Merge Join.*
 
