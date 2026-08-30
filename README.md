@@ -34,6 +34,17 @@ Une extension **Spark Structured Streaming** a également été développée afi
 
 ---
 
+## Documentation complémentaire
+
+La documentation détaillée et les preuves de validation du projet sont disponibles dans :
+
+- [Analyse de la qualité des données](docs/data_quality_analysis.md)
+- [Pipeline Spark](docs/spark_pipeline.md)
+- [Validation du pipeline](docs/validation.md)
+- [Extension Spark Structured Streaming](docs/structured_streaming.md)
+
+---
+
 # Objectifs
 
 SciPulse Insights a pour objectif de mettre en œuvre une chaîne Data Engineering complète allant de l'ingestion des données jusqu'à leur exploitation analytique.
@@ -662,15 +673,17 @@ Le Structured Streaming permet de réduire le délai entre l'arrivée d'un nouve
 
 ---
 
-### Garanties de traitement
+### Garanties et limite du traitement
 
 Dans le pipeline batch, Airflow orchestre des traitements planifiés et permet de rejouer les tâches en cas d'échec.
 
-Dans le pipeline Structured Streaming, Spark conserve la progression du traitement dans un checkpoint stocké dans MinIO. Ce mécanisme permet au job de retrouver son état après un redémarrage et de suivre les fichiers déjà pris en compte par le stream.
+Dans le pipeline Structured Streaming, Spark utilise un checkpoint stocké dans MinIO afin de conserver la progression et l'état du traitement.
 
-Le mode `append` permet d'ajouter progressivement les résultats des nouveaux micro-batches au dataset Parquet existant.
+Lors des expérimentations, certains redémarrages du job ont toutefois rencontré une limite liée au state store Spark sur S3A/MinIO, avec l'absence de certains fichiers d'état attendus dans le checkpoint.
 
-Ainsi, l'approche streaming réduit la latence de traitement tout en conservant l'état d'avancement du pipeline grâce au mécanisme de checkpoint.
+Cette limite concerne uniquement l'extension Structured Streaming expérimentale et n'affecte pas le fonctionnement du pipeline batch principal.
+
+Le mode `append` permet d'ajouter progressivement les résultats produits par les micro-batches au dataset Parquet.
 
 ---
 
@@ -802,46 +815,40 @@ Les outils suivants sont nécessaires :
 
 - Git ;
 - Docker ;
-- Docker Compose ;
-- Python 3 ;
-- pip.
+- Docker Compose.
+
+Aucune installation locale de Python, Spark, Airflow, Elasticsearch ou des autres composants de la stack n'est nécessaire : l'environnement du projet est conteneurisé avec Docker.
 
 ---
 
 ## 1. Cloner le projet
 
 ```bash
-git clone <URL_DU_REPOSITORY>
+git clone https://github.com/yass-007/SciPulse-Insights.git
 cd SciPulse-Insights
 ```
 
 ---
 
-## 2. Installer les dépendances Python
+## 2. Démarrer l'infrastructure
 
-Il est recommandé d'utiliser un environnement virtuel :
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-```
-
----
-
-## 3. Démarrer l'infrastructure
+L'ensemble de l'infrastructure SciPulse Insights est démarré avec Docker Compose :
 
 ```bash
 docker compose up -d
 ```
 
-Vérifier l'état des conteneurs :
+Cette commande démarre les différents services nécessaires au projet, notamment Airflow, PostgreSQL, MinIO, Spark, Elasticsearch, Kibana et Logstash.
+
+Vérifier ensuite l'état des conteneurs :
 
 ```bash
 docker compose ps
 ```
 
-En cas de problème :
+Les services doivent apparaître comme démarrés et les services disposant d'un healthcheck doivent atteindre un état sain.
+
+En cas de problème, les logs peuvent être consultés avec :
 
 ```bash
 docker compose logs -f
@@ -849,17 +856,21 @@ docker compose logs -f
 
 ---
 
-## 4. Lancer les pipelines
+## 3. Lancer les pipelines
 
-Une fois les services démarrés, ouvrir l'interface Airflow puis utiliser les DAGs correspondant aux différentes étapes du projet.
+Une fois l'infrastructure démarrée, ouvrir l'interface Apache Airflow.
 
-Le pipeline principal est :
+Les différents DAGs permettent d'exécuter les étapes Bronze et Silver des sources ArXiv, OpenAlex et Hacker News.
+
+Le pipeline principal du projet est :
 
 ```text
 scipulse_end_to_end_pipeline
 ```
 
-Le flux général est :
+Il orchestre les principales étapes nécessaires à la production et à l'exploitation des données.
+
+Le flux général du projet est :
 
 ```text
 Ingestion
