@@ -1,0 +1,71 @@
+{
+  "settings": {
+    "analysis": {
+      "analyzer": {
+        "arxiv_text_analyzer": {
+          "type": "custom",
+          "tokenizer": "standard",
+          "filter": [
+            "lowercase",
+            "asciifolding"
+          ]
+        }
+      }
+    }
+  },
+  "mappings": {
+    "dynamic": "strict",
+    "properties": {
+      "id": {
+        "type": "keyword"
+      },
+      "title": {
+        "type": "text",
+        "analyzer": "arxiv_text_analyzer",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 512
+          }
+        }
+      },
+      "abstract": {
+        "type": "text",
+        "analyzer": "arxiv_text_analyzer"
+      },
+      "authors": {
+        "type": "text",
+        "analyzer": "arxiv_text_analyzer",
+        "fields": {
+          "keyword": {
+            "type": "keyword",
+            "ignore_above": 512
+          }
+        }
+      },
+      "categories": {
+        "type": "keyword"
+      },
+      "update_date": {
+        "type": "date",
+        "format": "strict_date_optional_time||yyyy-MM-dd"
+      },
+      "doi": {
+        "type": "keyword",
+        "ignore_above": 512
+      },
+      "journal-ref": {
+        "type": "text",
+        "analyzer": "arxiv_text_analyzer"
+      },
+      "comments": {
+        "type": "text",
+        "analyzer": "arxiv_text_analyzer"
+      },
+      "license": {
+        "type": "keyword",
+        "ignore_above": 1024
+      }
+    }
+  }
+}

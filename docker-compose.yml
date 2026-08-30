@@ -1,0 +1,361 @@
+###############################################################################
+# SciPulse — Infrastructure Docker
+# Module 1 : Elasticsearch · Logstash · Kibana · Airflow · PostgreSQL · MinIO
+# Usage : docker compose up -d
+###############################################################################
+
+x-airflow-common: &airflow-common
+  image: apache/airflow:2.9.3-python3.11
+
+  environment:
+    AIRFLOW__CORE__EXECUTOR: LocalExecutor
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres:5432/airflow
+    AIRFLOW__CORE__FERNET_KEY: ""
+    AIRFLOW__CORE__LOAD_EXAMPLES: "false"
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "true"
+    AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
+
+    AIRFLOW_CONN_ELASTICSEARCH_DEFAULT: "http://elasticsearch:9200"
+    AIRFLOW_CONN_MINIO_DEFAULT: "s3://minioadmin:minioadmin@?host=http%3A%2F%2Fminio%3A9000"
+    _PIP_ADDITIONAL_REQUIREMENTS: "great-expectations==0.18.21"
+
+  volumes:
+    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/plugins:/opt/airflow/plugins
+    - ./airflow/logs:/opt/airflow/logs
+    - ./src:/opt/airflow/src
+    - ./data:/opt/airflow/data
+    - ./great_expectations:/opt/airflow/great_expectations
+    - ./requirements.txt:/opt/airflow/requirements.txt:ro
+
+    # Allow Airflow to trigger the existing Spark container.
+    - /var/run/docker.sock:/var/run/docker.sock
+
+  depends_on:
+    postgres:
+      condition: service_healthy
+    elasticsearch:
+      condition: service_healthy
+
+  networks:
+    - scipulse
+
+
+services:
+
+  # ===========================================================================
+  # ELASTICSEARCH
+  # ===========================================================================
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.13.4
+    container_name: scipulse-elasticsearch
+
+    environment:
+      discovery.type: single-node
+      xpack.security.enabled: "false"
+      xpack.security.http.ssl.enabled: "false"
+      cluster.name: scipulse-cluster
+      ES_JAVA_OPTS: "-Xms1g -Xmx1g"
+
+    ports:
+      - "9200:9200"
+
+    volumes:
+      - es-data:/usr/share/elasticsearch/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+    restart: unless-stopped
+
+    networks:
+      - scipulse
+
+
+  # ===========================================================================
+  # KIBANA
+  # ===========================================================================
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.13.4
+    container_name: scipulse-kibana
+
+    environment:
+      ELASTICSEARCH_HOSTS: "http://elasticsearch:9200"
+
+    ports:
+      - "5601:5601"
+
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    networks:
+      - scipulse
+
+
+  # ===========================================================================
+  # LOGSTASH
+  # ===========================================================================
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.13.4
+    container_name: scipulse-logstash
+
+    environment:
+      LS_JAVA_OPTS: "-Xms512m -Xmx512m"
+
+    volumes:
+      - ./docker/logstash/pipeline:/usr/share/logstash/pipeline:ro
+      - ./docker/logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml:ro
+      - ./data:/data:ro
+
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+    networks:
+      - scipulse
+
+
+  # ===========================================================================
+  # POSTGRESQL — Métastore Airflow
+  # ===========================================================================
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: scipulse-postgres
+
+    environment:
+      POSTGRES_USER: airflow
+      POSTGRES_PASSWORD: airflow
+      POSTGRES_DB: airflow
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - pg-data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U airflow -d airflow"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+    restart: unless-stopped
+
+    networks:
+      - scipulse
+
+
+  # ===========================================================================
+  # MINIO — Data Lake
+  # ===========================================================================
+
+  minio:
+    image: minio/minio:latest
+    container_name: scipulse-minio
+
+    command: server /data --console-address ":9001"
+
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+
+    volumes:
+      - minio-data:/data
+
+    restart: unless-stopped
+
+    networks:
+      - scipulse
+
+
+  # ===========================================================================
+  # MINIO INIT — Création des buckets Bronze & Silver
+  # ===========================================================================
+
+  minio-init:
+    image: minio/mc:latest
+    container_name: scipulse-minio-init
+
+    depends_on:
+      - minio
+
+    entrypoint: >
+      /bin/sh -c "
+        until mc alias set local http://minio:9000 minioadmin minioadmin;
+        do
+          echo 'Waiting for MinIO...';
+          sleep 2;
+        done;
+
+        mc mb --ignore-existing local/arxiv-raw;
+        mc mb --ignore-existing local/hn-raw;
+        mc mb --ignore-existing local/citations-raw;
+
+        mc mb --ignore-existing local/arxiv-clean;
+        mc mb --ignore-existing local/hn-clean;
+        mc mb --ignore-existing local/citations-clean;
+
+        echo 'MinIO buckets created successfully';
+      "
+
+    networks:
+      - scipulse
+
+
+  # ===========================================================================
+  # AIRFLOW INIT
+  # ===========================================================================
+
+  airflow-init:
+    <<: *airflow-common
+    container_name: scipulse-airflow-init
+
+    entrypoint: /bin/bash
+
+    command:
+    - -c
+    - |
+      pip install --no-cache-dir -r /opt/airflow/requirements.txt
+
+      airflow db migrate
+
+      airflow users create \
+        --username admin \
+        --firstname Admin \
+        --lastname SciPulse \
+        --role Admin \
+        --email admin@scipulse.local \
+        --password admin || true
+
+      echo "Airflow initialized"
+
+    restart: "no"
+
+
+  # ===========================================================================
+  # AIRFLOW WEBSERVER
+  # ===========================================================================
+
+  airflow-webserver:
+    <<: *airflow-common
+    container_name: scipulse-airflow-web
+
+    command:
+    - bash
+    - -c
+    - |
+      pip install --no-cache-dir -r /opt/airflow/requirements.txt
+      exec airflow webserver
+
+    ports:
+      - "8080:8080"
+
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+    restart: unless-stopped
+
+
+  # ===========================================================================
+  # AIRFLOW SCHEDULER
+  # ===========================================================================
+
+  airflow-scheduler:
+    <<: *airflow-common
+    container_name: scipulse-airflow-scheduler
+
+    command:
+    - bash
+    - -c
+    - |
+      pip install --no-cache-dir -r /opt/airflow/requirements.txt
+      exec airflow scheduler
+
+    depends_on:
+      airflow-init:
+        condition: service_completed_successfully
+
+    restart: unless-stopped
+
+
+  # ===========================================================================
+  # SPARK — PySpark processing for Module 2
+  # ===========================================================================
+
+  spark:
+    image: apache/spark:3.5.1
+    mem_limit: 8g
+    container_name: scipulse-spark 
+    ports:
+      - "4040:4040"
+
+    command:
+      - bash
+      - -c
+      - |
+        mkdir -p /tmp/python-packages
+        pip3 install --no-cache-dir --target=/tmp/python-packages numpy
+        tail -f /dev/null
+
+    environment:
+      AWS_ACCESS_KEY_ID: minioadmin
+      AWS_SECRET_ACCESS_KEY: minioadmin
+
+
+      PYTHONPATH: /tmp/python-packages
+      PYSPARK_PYTHON: python3
+      PYSPARK_DRIVER_PYTHON: python3
+
+    volumes:
+      - ./src:/opt/spark/work-dir/src
+      - ./data:/opt/spark/work-dir/data
+
+    depends_on:
+      - minio
+
+    networks:
+      - scipulse
+
+    restart: unless-stopped
+
+
+# =============================================================================
+# VOLUMES
+# =============================================================================
+
+volumes:
+  es-data:
+    driver: local
+
+  pg-data:
+    driver: local
+
+  minio-data:
+    driver: local
+
+
+# =============================================================================
+# NETWORK
+# =============================================================================
+
+networks:
+  scipulse:
+    driver: bridge

@@ -1,0 +1,57 @@
+# =============================================================================
+# SciPulse — .gitignore
+# =============================================================================
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.eggs/
+*.egg
+.venv/
+venv/
+env/
+
+# --- Data ---
+# Bronze and Silver datasets are generated locally / stored in MinIO.
+# Large raw JSON, JSONL, ZIP and Parquet files must not be versioned.
+data/
+*.csv
+*.parquet
+
+# --- Docker volumes ---
+es-data/
+pg-data/
+minio-data/
+
+# --- Airflow ---
+airflow/logs/
+airflow/plugins/__pycache__/
+
+# --- dbt ---
+dbt/target/
+dbt/dbt_packages/
+dbt/logs/
+
+# --- Great Expectations ---
+# Generated validation results and Data Docs are rebuilt locally.
+great_expectations/uncommitted/
+great_expectations/plugins/
+great_expectations/checkpoints/
+great_expectations/expectations/.ge_store_backend_id
+
+
+# --- IDE ---
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Environment ---
+.env
+.env.local
